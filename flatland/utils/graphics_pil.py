@@ -11,6 +11,7 @@ from pkg_resources import resource_string as resource_bytes
 from flatland.utils.graphics_layer import GraphicsLayer
 
 from flatland.core.grid.rail_env_grid import RailEnvTransitions  # noqa: E402
+from flatland.utils.directed_tiles import DirectedTiles
 
 
 class PILGL(GraphicsLayer):
@@ -25,13 +26,14 @@ class PILGL(GraphicsLayer):
     SELECTED_AGENT_LAYER = 4
     SELECTED_TARGET_LAYER = 5
 
-    def __init__(self, width, height, jupyter=False, screen_width=800, screen_height=600):
+    def __init__(self, width, height, layout, jupyter=False, screen_width=800, screen_height=600):
         self.yxBase = (0, 0)
         self.linewidth = 4
         self.n_agent_colors = 1  # overridden in loadAgent
 
         self.width = width
         self.height = height
+        self.layout = layout
 
         self.background_grid = np.zeros(shape=(self.width, self.height))
 
@@ -243,12 +245,16 @@ class PILGL(GraphicsLayer):
                 self.clear_layer(iLayer)
 
     def create_layers(self, clear=True):
-        self.create_layer(PILGL.RAIL_LAYER, clear=clear)  # rail / background (scene)
+        # rail / background (scene)
+        self.create_layer(PILGL.RAIL_LAYER, clear=clear)
         self.create_layer(PILGL.AGENT_LAYER, clear=clear)  # agents
         self.create_layer(PILGL.TARGET_LAYER, clear=clear)  # agents
-        self.create_layer(PILGL.PREDICTION_PATH_LAYER, clear=clear)  # drawing layer for agent's prediction path
-        self.create_layer(PILGL.SELECTED_AGENT_LAYER, clear=clear)  # drawing layer for selected agent
-        self.create_layer(PILGL.SELECTED_TARGET_LAYER, clear=clear)  # drawing layer for selected agent's target
+        # drawing layer for agent's prediction path
+        self.create_layer(PILGL.PREDICTION_PATH_LAYER, clear=clear)
+        # drawing layer for selected agent
+        self.create_layer(PILGL.SELECTED_AGENT_LAYER, clear=clear)
+        # drawing layer for selected agent's target
+        self.create_layer(PILGL.SELECTED_TARGET_LAYER, clear=clear)
 
 
 class PILSVG(PILGL):
@@ -257,17 +263,26 @@ class PILSVG(PILGL):
     but for backward compatibility, and to not introduce any breaking changes at this point
     we are sticking to the legacy name of PILSVG (when in practice we are not using SVG anymore)
     """
-    def __init__(self, width, height, jupyter=False, screen_width=800, screen_height=600):
+    def __init__(self, width, height, layout, jupyter=False, screen_width=800, screen_height=600, directed="False"):
         oSuper = super()
-        oSuper.__init__(width, height, jupyter, screen_width, screen_height)
+        oSuper.__init__(width, height, layout, jupyter, screen_width, screen_height)
 
         self.lwAgents = []
         self.agents_prev = []
+        self.directed = directed
 
-        self.load_buildings()
         self.load_scenery()
         self.load_rail()
         self.load_agent()
+        self.load_obstacles()
+        self.load_stations()
+        # self.load_pick_ups()
+        # self.load_drop_offs()
+        # self.load_pick_up_drop_offs()
+        self.load_safe_spaces()
+        self.load_initial_agent_poses()
+
+        print("...Class PILSVG(PILGL)...")
 
     def process_events(self):
         time.sleep(0.001)
@@ -289,66 +304,14 @@ class PILSVG(PILGL):
             pil_img.load()
         return pil_img
 
-    def load_buildings(self):
-        lBuildingFiles = [
-            "Buildings-Bank.png",
-            "Buildings-Bar.png",
-            "Buildings-Wohnhaus.png",
-            "Buildings-Hochhaus.png",
-            "Buildings-Hotel.png",
-            "Buildings-Office.png",
-            "Buildings-Polizei.png",
-            "Buildings-Post.png",
-            "Buildings-Supermarkt.png",
-            "Buildings-Tankstelle.png",
-            "Buildings-Fabrik_A.png",
-            "Buildings-Fabrik_B.png",
-            "Buildings-Fabrik_C.png",
-            "Buildings-Fabrik_D.png",
-            "Buildings-Fabrik_E.png",
-            "Buildings-Fabrik_F.png",
-            "Buildings-Fabrik_G.png",
-            "Buildings-Fabrik_H.png",
-            "Buildings-Fabrik_I.png"
-        ]
-
-        imgBg = self.pil_from_png_file('flatland.png', "Background_city.png")
-        imgBg = imgBg.convert("RGBA")
-
-        self.lBuildings = []
-        for sFile in lBuildingFiles:
-            img = self.pil_from_png_file('flatland.png', sFile)
-            img = Image.alpha_composite(imgBg, img)
-            self.lBuildings.append(img)
-
     def load_scenery(self):
         scenery_files = [
-            "Scenery-Laubbaume_A.png",
-            "Scenery-Laubbaume_B.png",
-            "Scenery-Laubbaume_C.png",
-            "Scenery-Nadelbaume_A.png",
-            "Scenery-Nadelbaume_B.png",
-            "Scenery-Bergwelt_B.png"
+            "case_0_empty.png"
         ]
 
-        scenery_files_d2 = [
-            "Scenery-Bergwelt_C_Teil_1_links.png",
-            "Scenery-Bergwelt_C_Teil_2_rechts.png"
-        ]
+        img_back_ground = self.pil_from_png_file('flatland.png', "case_0_empty.png").convert("RGBA")
 
-        scenery_files_d3 = [
-            "Scenery-Bergwelt_A_Teil_1_links.png",
-            "Scenery-Bergwelt_A_Teil_2_mitte.png",
-            "Scenery-Bergwelt_A_Teil_3_rechts.png"
-        ]
-
-        scenery_files_water = [
-            "Scenery_Water.png"
-        ]
-
-        img_back_ground = self.pil_from_png_file('flatland.png', "Background_Light_green.png").convert("RGBA")
-
-        self.scenery_background_white = self.pil_from_png_file('flatland.png', "Background_white.png").convert("RGBA")
+        self.scenery_background_white = self.pil_from_png_file('flatland.png', "case_0_empty.png").convert("RGBA")
 
         self.scenery = []
         for file in scenery_files:
@@ -356,83 +319,173 @@ class PILSVG(PILGL):
             img = Image.alpha_composite(img_back_ground, img)
             self.scenery.append(img)
 
-        self.scenery_d2 = []
-        for file in scenery_files_d2:
-            img = self.pil_from_png_file('flatland.png', file)
-            img = Image.alpha_composite(img_back_ground, img)
-            self.scenery_d2.append(img)
+    def load_obstacles(self):
+        obstacle_files = [
+            "obstacle.png"
+        ]
 
-        self.scenery_d3 = []
-        for file in scenery_files_d3:
-            img = self.pil_from_png_file('flatland.png', file)
-            img = Image.alpha_composite(img_back_ground, img)
-            self.scenery_d3.append(img)
+        img_back_ground = self.pil_from_png_file('flatland.png', "case_0_empty.png").convert("RGBA")
 
-        self.scenery_water = []
-        for file in scenery_files_water:
+        self.scenery_background_white = self.pil_from_png_file('flatland.png', "case_0_empty.png").convert("RGBA")
+
+        self.obstacles = []
+        for file in obstacle_files:
             img = self.pil_from_png_file('flatland.png', file)
             img = Image.alpha_composite(img_back_ground, img)
-            self.scenery_water.append(img)
+            self.obstacles.append(img)
+
+    def load_stations(self):
+        station_files = [
+            "target_p.png",
+            "target_d.png",
+            "target_p_d.png"
+        ]
+
+        img_back_ground = self.pil_from_png_file('flatland.png', "case_0_empty.png").convert("RGBA")
+
+        self.scenery_background_white = self.pil_from_png_file('flatland.png', "case_0_empty.png").convert("RGBA")
+
+        self.stations = []
+        for file in station_files:
+            img = self.pil_from_png_file('flatland.png', file)
+            img = Image.alpha_composite(img_back_ground, img)
+            self.stations.append(img)
+
+    def load_safe_spaces(self):
+        safe_spaces_files = [
+            "safe_space.png"
+        ]
+
+        img_back_ground = self.pil_from_png_file('flatland.png', "case_0_empty.png").convert("RGBA")
+
+        self.scenery_background_white = self.pil_from_png_file('flatland.png', "case_0_empty.png").convert("RGBA")
+
+        self.safe_spaces = []
+        for file in safe_spaces_files:
+            img = self.pil_from_png_file('flatland.png', file)
+            img = Image.alpha_composite(img_back_ground, img)
+            self.safe_spaces.append(img)
+
+    def load_initial_agent_poses(self):
+        initial_agent_poses_files = [
+            "initial_agent_pose.png"
+        ]
+
+        img_back_ground = self.pil_from_png_file('flatland.png', "case_0_empty.png").convert("RGBA")
+
+        self.scenery_background_white = self.pil_from_png_file('flatland.png', "case_0_empty.png").convert("RGBA")
+
+        self.initial_agent_poses = []
+        for file in initial_agent_poses_files:
+            img = self.pil_from_png_file('flatland.png', file)
+            img = Image.alpha_composite(img_back_ground, img)
+            self.initial_agent_poses.append(img)
 
     def load_rail(self):
         """ Load the rail SVG images, apply rotations, and store as PIL images.
         """
         rail_files = {
-            "": "Background_Light_green.png",
-            "WE": "Gleis_Deadend.png",
-            "WW EE NN SS": "Gleis_Diamond_Crossing.png",
-            "WW EE": "Gleis_horizontal.png",
-            "EN SW": "Gleis_Kurve_oben_links.png",
-            "WN SE": "Gleis_Kurve_oben_rechts.png",
-            "ES NW": "Gleis_Kurve_unten_links.png",
-            "NE WS": "Gleis_Kurve_unten_rechts.png",
-            "NN SS": "Gleis_vertikal.png",
-            "NN SS EE WW ES NW SE WN": "Weiche_Double_Slip.png",
-            "EE WW EN SW": "Weiche_horizontal_oben_links.png",
-            "EE WW SE WN": "Weiche_horizontal_oben_rechts.png",
-            "EE WW ES NW": "Weiche_horizontal_unten_links.png",
-            "EE WW NE WS": "Weiche_horizontal_unten_rechts.png",
-            "NN SS EE WW NW ES": "Weiche_Single_Slip.png",
-            "NE NW ES WS": "Weiche_Symetrical.png",
-            "NN SS EN SW": "Weiche_vertikal_oben_links.png",
-            "NN SS SE WN": "Weiche_vertikal_oben_rechts.png",
-            "NN SS NW ES": "Weiche_vertikal_unten_links.png",
-            "NN SS NE WS": "Weiche_vertikal_unten_rechts.png",
-            "NE NW ES WS SS NN": "Weiche_Symetrical_gerade.png",
-            "NE EN SW WS": "Gleis_Kurve_oben_links_unten_rechts.png"
+            "": "case_0_empty.png",
+            "NN SS": "case_1_straight.png",
+            "NN": "case_2_straight_directed.png",
+            "NS": "case_3_deadend.png",
+            "NN EE SS WW": "case_4_diamond_crossing.png",
+            "NE WS": "case_5_simple_turn.png",
+            "NW NE WS ES": "case_6_symetrical_switch.png",
+            "NW ES SE WN": "case_7_asymetrical_switch.png",
+            "NN NW ES SS": "case_8_simple_switch_a.png",
+            "NN NE SS WS": "case_9_simple_switch_b.png",
+            "NE NW ES EE WW WS": "case_10_T_switch.png",
+            "NN NW NE ES SS WS": "case_11_arrow_switch.png",
+            "NN NW ES SS SE WN": "case_12_double_x_switch_a.png",
+            "NN NE EN SW SS WS": "case_13_double_x_switch_b.png",
+            "NN NW EE ES SS WW": "case_14_single_slip_switch.png",
+            "NN NW NE EE ES SS WW WS": "case_15_double_slip_switch_a.png",
+            "NN NW EE ES SS SE WW WN": "case_16_double_slip_switch_b.png",
+            "NW NE ES SE WS WN": "case_17_simple_triple_switch.png",
+            "NE NW EE ES SE WS WW WN": "case_18_triple_x_switch_a.png",
+            "NN NW NE ES SS SE WS WN": "case_19_triple_x_switch_b.png",
+            "NN NW NE EE ES SS SE WW WN WS": "case_20_triple_slip_switch.png",
+            "NN NE NW ES EN SS SE SW WN WS": "case_21_quadruple_x_switch.png",
+            "NE NW EN ES SW SE WN WS": "case_22_all_turns.png",
+            "NN NW NE EE EN ES SS SW SE WW WN WS": "case_23_all_directions.png"
         }
 
         target_files = {
-            "EW": "Bahnhof_#d50000_Deadend_links.png",
-            "NS": "Bahnhof_#d50000_Deadend_oben.png",
-            "WE": "Bahnhof_#d50000_Deadend_rechts.png",
-            "SN": "Bahnhof_#d50000_Deadend_unten.png",
-            "EE WW": "Bahnhof_#d50000_Gleis_horizontal.png",
-            "NN SS": "Bahnhof_#d50000_Gleis_vertikal.png"}
+            "EW": "case_0_empty.png",
+            "NS": "case_0_empty.png",
+            "WE": "case_0_empty.png",
+            "SN": "case_0_empty.png",
+            "EE WW": "case_0_empty.png",
+            "NN SS": "case_0_empty.png"
+        }
 
         # Dict of rail cell images indexed by binary transitions
         pil_rail_files_org = self.load_pngs(rail_files, rotate=True)
-        pil_rail_files = self.load_pngs(rail_files, rotate=True, background_image="Background_rail.png",
+        pil_rail_files = self.load_pngs(rail_files, rotate=True, background_image="case_0_empty.png",
                                         whitefilter="Background_white_filter.png")
 
         # Load the target files (which have rails and transitions of their own)
         # They are indexed by (binTrans, iAgent), ie a tuple of the binary transition and the agent index
         pil_target_files_org = self.load_pngs(target_files, rotate=False, agent_colors=self.agent_colors)
         pil_target_files = self.load_pngs(target_files, rotate=False, agent_colors=self.agent_colors,
-                                          background_image="Background_rail.png",
-                                          whitefilter="Background_white_filter.png")
+                                          background_image="case_0_empty.png",
+                                          whitefilter="case_0_empty.png")
 
         # Load station and recolorize them
-        station = self.pil_from_png_file('flatland.png', "Bahnhof_#d50000_target.png")
+        station = self.pil_from_png_file('flatland.png', "case_0_empty.png")
         self.station_colors = self.recolor_image(station, [0, 0, 0], self.agent_colors, False)
 
-        cell_occupied = self.pil_from_png_file('flatland.png', "Cell_occupied.png")
-        self.cell_occupied = self.recolor_image(cell_occupied, [0, 0, 0], self.agent_colors, False)
+        # cell_occupied = self.pil_from_png_file(
+        #     'flatland.png', "Cell_occupied.png")
+        # self.cell_occupied = self.recolor_image(
+        #     cell_occupied, [0, 0, 0], self.agent_colors, False)
+
+        pil_extra = {}
+        pil_extra_org = {}
+        if self.directed == "True":
+            pil_extra = self.load_extra_pngs(rotate=True)
+            pil_extra_org = self.load_extra_pngs(rotate=True, background_image="case_0_empty.png",
+                                             whitefilter="Background_white_filter.png")
 
         # Merge them with the regular rails.
         # https://stackoverflow.com/questions/38987/how-to-merge-two-dictionaries-in-a-single-expression
-        self.pil_rail = {**pil_rail_files, **pil_target_files}
-        self.pil_rail_org = {**pil_rail_files_org, **pil_target_files_org}
+        self.pil_rail = {**pil_rail_files, **pil_target_files, **pil_extra}
+        self.pil_rail_org = {**pil_rail_files_org,
+                             **pil_target_files_org, **pil_extra_org}
+
+    def load_extra_pngs(self, rotate=False, background_image=None, whitefilter=None):
+        transitions = RailEnvTransitions()
+
+        dt = DirectedTiles()
+        extra_binary_transitions = dt.get_extra_binary_transitions()
+        extra_rail_files = dt.get_extra_rail_files()
+        rail_file_rotations = dt.get_rail_file_rotations()
+
+        pil = {}
+        for transition in extra_binary_transitions:
+            pil_rail = self.pil_from_png_file('flatland.png', extra_rail_files[transition]).convert(
+                "RGBA").rotate(-rail_file_rotations[transition])
+            if background_image is not None:
+                img_bg = self.pil_from_png_file('flatland.png', background_image).convert("RGBA")
+                pil_rail = Image.alpha_composite(img_bg, pil_rail)
+
+            if whitefilter is not None:
+                img_bg = self.pil_from_png_file('flatland.png', whitefilter).convert("RGBA")
+                pil_rail = Image.alpha_composite(pil_rail, img_bg)
+            if rotate:
+                # For rotations, we also store the base image
+                pil[transition] = pil_rail
+                # Rotate both the transition binary and the image and save in the dict
+                for nRot in [90, 180, 270]:
+                    binary_trans_2 = transitions.rotate_transition(
+                        transition, nRot)
+
+                    # PIL rotates anticlockwise for positive theta
+                    pil_rail_2 = pil_rail.rotate(-nRot)
+                    pil[binary_trans_2] = pil_rail_2
+            pil[transition] = pil_rail
+        return pil
 
     def load_pngs(self, file_directory, rotate=False, agent_colors=False, background_image=None, whitefilter=None):
         pil = {}
@@ -508,56 +561,60 @@ class PILSVG(PILGL):
                 city_size = max(1, np.log(1 + num_agents) / 2.5)
 
             if binary_trans == 0:
-                if self.background_grid[col][row] <= 4 + np.ceil(((col * row + col) % 10) / city_size):
-                    a = int(self.background_grid[col][row])
-                    a = a % len(self.lBuildings)
-                    if (col + row + col * row) % 13 > 11:
-                        pil_track = self.scenery[a % len(self.scenery)]
-                    else:
-                        if (col + row + col * row) % 3 == 0:
-                            a = (a + (col + row + col * row)) % len(self.lBuildings)
-                        pil_track = self.lBuildings[a]
-                elif ((self.background_grid[col][row] > 5 + ((col * row + col) % 3)) or
-                      ((col ** 3 + row ** 2 + col * row) % 10 == 0)):
-                    a = int(self.background_grid[col][row]) - 4
-                    a2 = (a + (col + row + col * row + col ** 3 + row ** 4))
-                    if a2 % 64 > 11:
-                        a = a2
-                    a_l = a % len(self.scenery)
-                    if a2 % 50 == 49:
-                        pil_track = self.scenery_water[0]
-                    else:
-                        pil_track = self.scenery[a_l]
-                    if rail_grid is not None:
-                        if a2 % 11 > 3:
-                            if a_l == len(self.scenery) - 1:
-                                # mountain
-                                if col > 1 and row % 7 == 1:
-                                    if rail_grid[row, col - 1] == 0:
-                                        self.draw_image_row_col(self.scenery_d2[0], (row, col - 1),
-                                                                layer=PILGL.RAIL_LAYER)
-                                        pil_track = self.scenery_d2[1]
-                        else:
-                            if a_l == len(self.scenery) - 1:
-                                # mountain
-                                if col > 2 and not (row % 7 == 1):
-                                    if rail_grid[row, col - 2] == 0 and rail_grid[row, col - 1] == 0:
-                                        self.draw_image_row_col(self.scenery_d3[0], (row, col - 2),
-                                                                layer=PILGL.RAIL_LAYER)
-                                        self.draw_image_row_col(self.scenery_d3[1], (row, col - 1),
-                                                                layer=PILGL.RAIL_LAYER)
-                                        pil_track = self.scenery_d3[2]
+                if self.layout.walls is not None and (row, col) in self.layout.walls:
+                    pil_track = self.obstacles[0]
+                else:
+                    pil_track = self.scenery[0]
 
-            self.draw_image_row_col(pil_track, (row, col), layer=PILGL.RAIL_LAYER)
+            self.draw_image_row_col(
+                pil_track, (row, col), layer=PILGL.RAIL_LAYER)
         else:
             print("Can't render - illegal rail or SVG element is undefined:", row, col,
                   format(binary_trans, "#018b")[2:], binary_trans)
 
-        if target is not None:
-            if is_selected:
-                svgBG = self.pil_from_png_file('flatland.png', "Selected_Target.png")
-                self.clear_layer(PILGL.SELECTED_TARGET_LAYER, 0)
-                self.draw_image_row_col(svgBG, (row, col), layer=PILGL.SELECTED_TARGET_LAYER)
+        # if target is not None:
+        #     if is_selected:
+        #         svgBG = self.pil_from_png_file(
+        #             'flatland.png', "Selected_Target.png")
+        #         self.clear_layer(PILGL.SELECTED_TARGET_LAYER, 0)
+        #         self.draw_image_row_col(
+        #             svgBG, (row, col), layer=PILGL.SELECTED_TARGET_LAYER)
+
+        if (row, col) in self.layout.stations:
+            if (row, col) in self.layout.pick_ups:
+                pil_track = self.stations[0]
+                # safe_space_img = self.station_colors[target % len(self.station_colors)]
+                station_img = Image.alpha_composite(
+                    pil_track, self.stations[0])
+            elif (row, col) in self.layout.drop_offs:
+                pil_track = self.stations[1]
+                # safe_space_img = self.station_colors[target % len(self.station_colors)]
+                station_img = Image.alpha_composite(
+                    pil_track, self.stations[1])
+            elif (row, col) in self.layout.pick_up_drop_offs:
+                pil_track = self.stations[2]
+                # safe_space_img = self.station_colors[target % len(self.station_colors)]
+                station_img = Image.alpha_composite(
+                    pil_track, self.stations[2])
+            self.draw_image_row_col(
+                station_img, (row, col), layer=PILGL.TARGET_LAYER)
+
+        if (row, col) in self.layout.safe_spaces:
+            pil_track = self.safe_spaces[0]
+            # safe_space_img = self.station_colors[target % len(self.station_colors)]
+            safe_space_img = Image.alpha_composite(
+                pil_track, self.safe_spaces[0])
+            self.draw_image_row_col(
+                safe_space_img, (row, col), layer=PILGL.TARGET_LAYER)
+
+        # if (row, col) in self.layout.initial_agent_poses.keys():
+        #     pil_track = self.initial_agent_poses[0]
+        #     initial_agent_pose_img = Image.alpha_composite(
+        #         pil_track, self.initial_agent_poses[0])
+        #     initial_agent_pose_img = initial_agent_pose_img.rotate(
+        #         - self.layout.initial_agent_poses[(row, col)])
+        #     self.draw_image_row_col(
+        #         initial_agent_pose_img, (row, col), layer=PILGL.TARGET_LAYER)
 
     def recolor_image(self, pil, a3BaseColor, ltColors, invert=False):
         rgbaImg = array(pil)

@@ -716,7 +716,8 @@ class RailEnvGraph(object):
                         if b44[dirIn, dirOut]:
                             # get the rowcol of the destination cell
                             rcOut = tuple(array(rcIn) + gDirs[dirOut])
-                            self.G.add_edge((*rcIn, dirIn), (*rcOut, dirOut), type="dir", l=1)
+                            if (rcOut[0], rcOut[1], dirOut) in self.G.nodes._nodes.keys():
+                                self.G.add_edge((*rcIn, dirIn), (*rcOut, dirOut), type="dir", l=1)
 
     def set_halts(self):
         stHalts = set()
@@ -895,26 +896,28 @@ class RailEnvGraph(object):
                     # Remove the "inner" section of the path (if any)
                     G5.remove_nodes_from(lnPath[1:-1])
                 # Join the start and end of the rail chain into a single node (lnPath[0])
-                G5 = nx.minors.contracted_nodes(G5, lnPath[0], lnPath[-1], self_loops=False)
+                if lnPath[0] in G5._node.keys() and lnPath[-1] in G5._node.keys():
+                    G5 = nx.minors.contracted_nodes(G5, lnPath[0], lnPath[-1], self_loops=False)
 
-                # There should just be one outedge
-                nNext = list(G5.successors(lnPath[0]))[0]
-                # Record the length of the removed path
-                G5.edges[lnPath[0], nNext]["l"] = len(lnInner)+2
+                    # There should just be one outedge
+                    nNext = list(G5.successors(lnPath[0]))[0]
+                    # Record the length of the removed path
+                    G5.edges[lnPath[0], nNext]["l"] = len(lnInner)+2
             
-            # Join up (identify, ie make identical) the ends of the grid chain into a single node
-            G3c = nx.minors.contracted_nodes(G3c, *lnEnds, self_loops=False)
-            G5 = nx.minors.contracted_nodes(G5, *lnEnds, self_loops=False)
+            if len(lnEnds) > 0:
+                # Join up (identify, ie make identical) the ends of the grid chain into a single node
+                G3c = nx.minors.contracted_nodes(G3c, *lnEnds, self_loops=False)
+                G5 = nx.minors.contracted_nodes(G5, *lnEnds, self_loops=False)
 
-            # Record the length of the simple path we have removed
-            # This records it in the node which will be ignored in shortest path!
-            # We use it for the length of the track
-            G5.nodes()[lnEnds[0]]["l"] = len(lnInner)+2
+                # Record the length of the simple path we have removed
+                # This records it in the node which will be ignored in shortest path!
+                # We use it for the length of the track
+                G5.nodes()[lnEnds[0]]["l"] = len(lnInner)+2
 
-            # We need to record it in an edge... but which edge?
-            # There should just be one outedge
-            nNext = list(G5.successors(lnEnds[0]))[0]
-            G5.edges[lnEnds[0], nNext]["l"] = len(lnInner)+2
+                # We need to record it in an edge... but which edge?
+                # There should just be one outedge
+                nNext = list(G5.successors(lnEnds[0]))[0]
+                G5.edges[lnEnds[0], nNext]["l"] = len(lnInner)+2
 
         return G5
 

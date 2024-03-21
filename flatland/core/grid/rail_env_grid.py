@@ -1,6 +1,6 @@
 from flatland.core.grid.grid4 import Grid4Transitions
 from flatland.utils.ordered_set import OrderedSet
-
+from flatland.utils.directed_tiles import DirectedTiles
 
 class RailEnvTransitions(Grid4Transitions):
     """
@@ -27,15 +27,30 @@ class RailEnvTransitions(Grid4Transitions):
     # the set of all valid transitions is obtained by successive 90-degree rotation of one of these basic transitions.
     transition_list = [int('0000000000000000', 2),  # empty cell - Case 0
                        int('1000000000100000', 2),  # Case 1 - straight
-                       int('1001001000100000', 2),  # Case 2 - simple switch
-                       int('1000010000100001', 2),  # Case 3 - diamond drossing
-                       int('1001011000100001', 2),  # Case 4 - single slip
-                       int('1100110000110011', 2),  # Case 5 - double slip
-                       int('0101001000000010', 2),  # Case 6 - symmetrical
-                       int('0010000000000000', 2),  # Case 7 - dead end
-                       int('0100000000000010', 2),  # Case 1b (8)  - simple turn right
-                       int('0001001000000000', 2),  # Case 1c (9)  - simple turn left
-                       int('1100000000100010', 2)]  # Case 2b (10) - simple switch mirrored
+                       int('1000000000000000', 2),  # Case 2 - straight directed
+                       int('0010000000000000', 2),  # Case 3 - deadend
+                       int('1000010000100001', 2),  # Case 4 - diamond crossing
+                       int('0100000000000010', 2),  # Case 5 - simple turn
+                       int('0101001000000010', 2),  # Case 6 - symmetrical switch
+                       int('0001001001001000', 2),  # Case 7 - asymetrical switch
+                       int('1001001000100000', 2),  # Case 8 - simple switch a
+                       int('1100000000100010', 2),  # Case 9 - simple switch b
+                       int('0101011000000011', 2),  # Case 10 - T switch
+                       int('1101001000100010', 2),  # Case 11 - arrow switch
+                       int('1001001001101000', 2),  # Case 12 - double x switch a
+                       int('1100100000110010', 2),  # Case 13 - double x switch b
+                       int('1001011000100001', 2),  # Case 14 - single slip switch
+                       int('1101011000100011', 2),  # Case 15 - double slip switch a
+                       int('1001011001101001', 2),  # Case 16 - double slip switch b
+                       int('0101001001001010', 2),  # Case 17 - simple triple switch
+                       int('0101011001001011', 2),  # Case 18 - triple x switch a
+                       int('1101001001101010', 2),  # Case 19 - triple x switch b
+                       int('1101011001101011', 2),  # Case 20 - triple slip switch
+                       int('1101101001111010', 2),  # Case 21  - quadruple x switch
+                       int('0101101001011010', 2),  # Case 22  - all turns
+                       int('1101111001111011', 2)]  # Case 23 - all directions
+    dt = DirectedTiles()
+    transition_list.extend(dt.get_extra_transition_list())
 
     def __init__(self):
         super(RailEnvTransitions, self).__init__(
@@ -46,11 +61,14 @@ class RailEnvTransitions(Grid4Transitions):
         self.transitions_all = OrderedSet()
         for index, trans in enumerate(self.transitions):
             self.transitions_all.add(trans)
-            if index in (2, 4, 6, 7, 8, 9, 10):
+            if index in (2, 3, 5, 6, 8, 9, 10, 11, 14, 15, 17, 18, 19, 20):
                 for _ in range(3):
                     trans = self.rotate_transition(trans, rotation=90)
                     self.transitions_all.add(trans)
-            elif index in (1, 5):
+            elif index in (1, 7, 12, 13, 16, 21):
+                trans = self.rotate_transition(trans, rotation=90)
+                self.transitions_all.add(trans)
+            elif index > 23:
                 trans = self.rotate_transition(trans, rotation=90)
                 self.transitions_all.add(trans)
 

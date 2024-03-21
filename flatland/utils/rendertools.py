@@ -27,22 +27,23 @@ class RenderTool(object):
     """ RenderTool is a facade to a renderer.
         (This was introduced for the Browser / JS renderer which has now been removed.)
     """
-    def __init__(self, env, gl="PGL", jupyter=False,
+    def __init__(self, env, layout, gl="PGL", jupyter=False,
                  agent_render_variant=AgentRenderVariant.ONE_STEP_BEHIND,
                  show_debug=False, clear_debug_text=True, screen_width=800, screen_height=600,
-                 host="localhost", port=None):
+                 host="localhost", port=None, directed="False"):
 
         self.env = env
         self.frame_nr = 0
         self.start_time = time.time()
         self.times_list = deque()
+        self.layout = layout
 
         self.agent_render_variant = agent_render_variant
 
         if gl in ["PIL", "PILSVG", "PGL"]:
-            self.renderer = RenderLocal(env, gl, jupyter,
-                 agent_render_variant,
-                 show_debug, clear_debug_text, screen_width, screen_height)
+            self.renderer = RenderLocal(env, layout, gl, jupyter,
+                                        agent_render_variant,
+                                        show_debug, clear_debug_text, screen_width, screen_height, directed=directed)
             self.gl = self.renderer.gl
         else:
             print("[", gl, "] not found, switch to PGL")
@@ -53,14 +54,16 @@ class RenderTool(object):
                    show_inactive_agents=False,  # whether to show agents before they start
                    show_observations=True,  # whether to include observations
                    show_predictions=False,  # whether to include predictions
-                   show_rowcols=False, # label the rows and columns
-                   frames=False,  # frame counter to show (intended since invocation)
+                   show_rowcols=False,  # label the rows and columns
+                   # frame counter to show (intended since invocation)
+                   frames=False,
                    episode=None,  # int episode number to show
                    step=None,  # int step number to show in image
-                   selected_agent=None,  # indicate which agent is "selected" in the editor):
-                   return_image=False): # indicate if image is returned for use in monitor:
+                   # indicate which agent is "selected" in the editor):
+                   selected_agent=None,
+                   return_image=False):  # indicate if image is returned for use in monitor:
         return self.renderer.render_env(show, show_agents, show_inactive_agents, show_observations,
-                    show_predictions, show_rowcols, frames, episode, step, selected_agent, return_image)
+                                        show_predictions, show_rowcols, frames, episode, step, selected_agent, return_image)
 
     def close_window(self):
         self.renderer.close_window()
@@ -141,28 +144,29 @@ class RenderLocal(RenderBase):
     theta = np.linspace(0, np.pi / 2, 5)
     arc = array([np.cos(theta), np.sin(theta)]).T  # from [1,0] to [0,1]
 
-    def __init__(self, env, gl="PILSVG", jupyter=False,
+    def __init__(self, env, layout, gl="PILSVG", jupyter=False,
                  agent_render_variant=AgentRenderVariant.ONE_STEP_BEHIND,
-                 show_debug=False, clear_debug_text=True, screen_width=800, screen_height=600):
+                 show_debug=False, clear_debug_text=True, screen_width=800, screen_height=600, directed=False):
 
         self.env = env
         self.frame_nr = 0
         self.start_time = time.time()
         self.times_list = deque()
+        self.layout = layout
 
         self.agent_render_variant = agent_render_variant
 
         self.gl_str = gl
 
         if gl == "PIL":
-            self.gl = PILGL(env.width, env.height, jupyter, screen_width=screen_width, screen_height=screen_height)
+            self.gl = PILGL(env.width, env.height, layout, jupyter, screen_width=screen_width, screen_height=screen_height)
         elif gl == "PILSVG":
-            self.gl = PILSVG(env.width, env.height, jupyter, screen_width=screen_width, screen_height=screen_height)
+            self.gl = PILSVG(env.width, env.height, layout, jupyter, screen_width=screen_width, screen_height=screen_height, directed=directed)
         else:
             if gl != "PGL":
                 print("[", gl, "] not found, switch to PGL, PILSVG")
                 print("Using PGL")
-            self.gl = PGLGL(env.width, env.height, jupyter, screen_width=screen_width, screen_height=screen_height)
+            self.gl = PGLGL(env.width, env.height, layout, jupyter, screen_width=screen_width, screen_height=screen_height, directed=directed)
 
         self.new_rail = True
         self.show_debug = show_debug
@@ -523,28 +527,29 @@ class RenderLocal(RenderBase):
 
         # if type(self.gl) is PILSVG:
         if self.gl_str in ["PILSVG", "PGL"]:
+            # print("...type(self.gl) is PILSVG...")
             return self.render_env_svg(show=show,
-                                show_observations=show_observations,
-                                show_predictions=show_predictions,
-                                selected_agent=selected_agent,
-                                show_agents=show_agents,
-                                show_inactive_agents=show_inactive_agents,
-                                show_rowcols=show_rowcols,
-                                return_image=return_image
-                                )
+                                       show_observations=show_observations,
+                                       show_predictions=show_predictions,
+                                       selected_agent=selected_agent,
+                                       show_agents=show_agents,
+                                       show_inactive_agents=show_inactive_agents,
+                                       show_rowcols=show_rowcols,
+                                       return_image=return_image
+                                       )
         else:
             return self.render_env_pil(show=show,
-                                show_agents=show_agents,
-                                show_inactive_agents=show_inactive_agents,
-                                show_observations=show_observations,
-                                show_predictions=show_predictions,
-                                show_rowcols=show_rowcols,
-                                frames=frames,
-                                episode=episode,
-                                step=step,
-                                selected_agent=selected_agent,
-                                return_image=return_image
-                                )
+                                       show_agents=show_agents,
+                                       show_inactive_agents=show_inactive_agents,
+                                       show_observations=show_observations,
+                                       show_predictions=show_predictions,
+                                       show_rowcols=show_rowcols,
+                                       frames=frames,
+                                       episode=episode,
+                                       step=step,
+                                       selected_agent=selected_agent,
+                                       return_image=return_image
+                                       )
 
     def _draw_square(self, center, size, color, opacity=255, layer=0):
         x0 = center[0] - size / 2
@@ -553,6 +558,7 @@ class RenderLocal(RenderBase):
         y1 = center[1] + size / 2
         self.gl.plot([x0, x1, x1, x0, x0], [y0, y0, y1, y1, y0], color=color, layer=layer, opacity=opacity)
 
+
     def get_image(self):
         return self.gl.get_image()
 
@@ -560,15 +566,17 @@ class RenderLocal(RenderBase):
                        show=False,  # whether to call matplotlib show() or equivalent after completion
                        # use false when calling from Jupyter.  (and matplotlib no longer supported!)
                        show_agents=True,  # whether to include agents
-                       show_inactive_agents=False, 
+                       show_inactive_agents=False,
                        show_observations=True,  # whether to include observations
                        show_predictions=False,  # whether to include predictions
-                       show_rowcols=False, # label the rows and columns
-                       frames=False,  # frame counter to show (intended since invocation)
+                       show_rowcols=False,  # label the rows and columns
+                       # frame counter to show (intended since invocation)
+                       frames=False,
                        episode=None,  # int episode number to show
                        step=None,  # int step number to show in image
                        selected_agent=None,  # indicate which agent is "selected" in the editor
-                       return_image=False # indicate if image is returned for use in monitor:
+                       # indicate if image is returned for use in monitor:
+                       return_image=False
                        ):
 
         if type(self.gl) is PILGL:
@@ -680,12 +688,12 @@ class RenderLocal(RenderBase):
                 if agent.position is None:
                     if show_inactive_agents:
                         # print("agent ", agent_idx, agent.position, agent.old_position, agent.initial_position)
-                        self.gl.set_agent_at(agent_idx, *(agent.initial_position), 
-                            agent.initial_direction, agent.initial_direction,
-                            is_selected=(selected_agent == agent_idx),
-                            rail_grid=env.rail.grid,
-                            show_debug=self.show_debug, clear_debug_text=self.clear_debug_text,
-                            malfunction=False)
+                        self.gl.set_agent_at(agent_idx, *(agent.initial_position),
+                                             agent.initial_direction, agent.initial_direction,
+                                             is_selected=(selected_agent == agent_idx),
+                                             rail_grid=env.rail.grid,
+                                             show_debug=self.show_debug, clear_debug_text=self.clear_debug_text,
+                                             malfunction=False)
                     continue
 
                 is_malfunction = agent.malfunction_handler.malfunction_down_counter > 0
@@ -707,7 +715,7 @@ class RenderLocal(RenderBase):
                         position = agent.position
                         direction = agent.direction
                         old_direction = agent.direction
-                        
+
                     # When the editor has just added an agent
                     elif agent.initial_position is not None:
                         position = agent.initial_position
@@ -739,23 +747,21 @@ class RenderLocal(RenderBase):
                     # set_agent_at uses the agent index for the color
                     if self.agent_render_variant == AgentRenderVariant.AGENT_SHOWS_OPTIONS_AND_BOX:
                         self.gl.set_cell_occupied(agent_idx, *(agent.position))
-                    
+
                     if show_inactive_agents:
                         show_this_agent = True
                     else:
                         show_this_agent = agent.state.is_on_map_state()
 
                     if show_this_agent:
-                        self.gl.set_agent_at(agent_idx, *position, agent.direction, direction, 
-                                        selected_agent == agent_idx,
-                                        rail_grid=env.rail.grid, malfunction=is_malfunction)
+                        self.gl.set_agent_at(agent_idx, *position, agent.direction, direction,
+                                             selected_agent == agent_idx,
+                                             rail_grid=env.rail.grid, malfunction=is_malfunction)
 
         if show_observations:
             self.render_observation(range(env.get_num_agents()), env.dev_obs_dict)
         if show_predictions:
             self.render_prediction(range(env.get_num_agents()), env.dev_pred_dict)
-        
-
 
         if show:
             self.gl.show()

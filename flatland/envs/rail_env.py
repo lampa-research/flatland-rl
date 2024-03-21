@@ -506,9 +506,9 @@ class RailEnv(Environment):
         """
         self._elapsed_steps += 1
 
-        # Not allowed to step further once done
-        if self.dones["__all__"]:
-            raise Exception("Episode is done, cannot call step()")
+        # # Not allowed to step further once done
+        # if self.dones["__all__"]:
+        #     raise Exception("Episode is done, cannot call step()")
 
         self.clear_rewards_dict()
 
